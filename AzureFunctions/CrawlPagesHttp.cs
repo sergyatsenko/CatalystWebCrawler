@@ -4,58 +4,73 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
-public class CrawlPagesHttp
+namespace AzureSearchCrawler
 {
-	private readonly ILogger _logger;
-
-	public CrawlPagesHttp(ILoggerFactory loggerFactory)
+	public class CrawlPagesHttp
 	{
-		_logger = loggerFactory.CreateLogger<CrawlPagesHttp>();
-	}
+		private readonly ILogger _logger;
 
-	[Function("CrawlPagesHttp")]
-	public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
-	{
-		_logger.LogInformation("C# HTTP trigger function processed a request.");
-
-		List<string> urls = new List<string>();
-
-		try
+		public CrawlPagesHttp(ILoggerFactory loggerFactory)
 		{
-			using (StreamReader reader = new StreamReader(req.Body))
+			_logger = loggerFactory.CreateLogger<CrawlPagesHttp>();
+		}
+
+		[Function("CrawlPagesHttp")]
+		public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
+		{
+			_logger.LogInformation("C# HTTP trigger function processed a request.");
+
+			List<string> urls = new List<string>();
+
+			try
 			{
-				string requestBody = await reader.ReadToEndAsync();
-				if (!string.IsNullOrEmpty(requestBody))
+				using (StreamReader reader = new StreamReader(req.Body))
 				{
-					var jsonDocument = JsonDocument.Parse(requestBody);
-					if (jsonDocument.RootElement.TryGetProperty("urls", out JsonElement urlsElement) && urlsElement.ValueKind == JsonValueKind.Array)
+					string requestBody = await reader.ReadToEndAsync();
+					if (!string.IsNullOrEmpty(requestBody))
 					{
-						foreach (JsonElement urlElement in urlsElement.EnumerateArray())
+						var jsonDocument = JsonDocument.Parse(requestBody);
+						if (jsonDocument.RootElement.TryGetProperty("urls", out JsonElement urlsElement) && urlsElement.ValueKind == JsonValueKind.Array)
 						{
-							string url = urlElement.GetString();
-							if (!string.IsNullOrEmpty(url))
+							foreach (JsonElement urlElement in urlsElement.EnumerateArray())
 							{
-								urls.Add(url);
+								string url = urlElement.GetString();
+								if (!string.IsNullOrEmpty(url))
+								{
+									urls.Add(url);
+								}
 							}
 						}
 					}
 				}
 			}
+			catch (JsonException ex)
+			{
+				_logger.LogError($"Error parsing JSON: {ex.Message}");
+			}
+
+			var response = req.CreateResponse(HttpStatusCode.OK);
+			response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+
+			string responseMessage = urls.Count > 0
+				? $"Received request with {urls.Count} URL(s): {string.Join(", ", urls)}"
+				: "Received request, but no valid URLs were provided.";
+
+			var serviceEndpoint = "https://xccomaisearch.search.windows.net";
+			var indexName = "catalyst-az-poc";
+			var key = "yrQnhlo42h8Nq5tK7alHcucdUskKb2FDtnx32ssLlsAzSeBOWnoA";
+			var maxPagesToIndex = 500;
+			var rootUrl = "https://www.catalyst.org";
+			
+
+			var indexer = new AzureSearchIndexer(serviceEndpoint, indexName, key, true, new TextExtractor());
+			var crawler = new Crawler(indexer);
+			crawler.Crawl(rootUrl, urls, maxPagesToIndex).Wait();
+
+
+			await response.WriteStringAsync(JsonSerializer.Serialize(new { message = responseMessage, urls = urls }));
+
+			return response;
 		}
-		catch (JsonException ex)
-		{
-			_logger.LogError($"Error parsing JSON: {ex.Message}");
-		}
-
-		var response = req.CreateResponse(HttpStatusCode.OK);
-		response.Headers.Add("Content-Type", "application/json; charset=utf-8");
-
-		string responseMessage = urls.Count > 0
-			? $"Received request with {urls.Count} URL(s): {string.Join(", ", urls)}"
-			: "Received request, but no valid URLs were provided.";
-
-		await response.WriteStringAsync(JsonSerializer.Serialize(new { message = responseMessage, urls = urls }));
-
-		return response;
 	}
 }
