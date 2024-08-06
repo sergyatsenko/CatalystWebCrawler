@@ -36,12 +36,12 @@ namespace AzureSearchCrawler
 			public string ImagesJson { get; set; }
 			public string PageHtml { get; set; }
 			public string HeadHtml { get; set; }
-			public string SentimentValue { get; set; }
-			public List<string> PhrasesList { get; set; }
-			public List<string> EntitiesList { get; set; }
-			public string EntitiesJson { get; set; }
-			public List<string> LinkedEntitiesList { get; set; }
-			public string LinkedEntitiesJson { get; set; }
+			//public string SentimentValue { get; set; }
+			//public List<string> PhrasesList { get; set; }
+			//public List<string> EntitiesList { get; set; }
+			//public string EntitiesJson { get; set; }
+			//public List<string> LinkedEntitiesList { get; set; }
+			//public string LinkedEntitiesJson { get; set; }
 
 
 			//public string PageHtml { get; } = pageHtml;

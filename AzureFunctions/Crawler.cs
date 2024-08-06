@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using static System.Net.WebRequestMethods;
 
 namespace AzureSearchCrawler
 {
@@ -37,7 +38,12 @@ namespace AzureSearchCrawler
 
 		public void Add(PageToCrawl page)
 		{
-			Console.WriteLine("adding page:", page);
+			if (page.Uri.AbsoluteUri.StartsWith("http://a.co"))
+			{
+				Console.WriteLine("skipping empty page", page);
+				return;
+			}
+			Console.WriteLine("adding page:", page?.Uri?.OriginalString);
 			//if(page.Uri.LocalPath.)
 			if (page == null)
 				throw new ArgumentNullException("page");
@@ -177,7 +183,7 @@ namespace AzureSearchCrawler
 			crawler.PageCrawlStarting += crawler_ProcessPageCrawlStarting;
 			crawler.PageCrawlCompleted += crawler_ProcessPageCrawlCompleted;
 
-			CrawlResult result = await crawler.CrawlAsync(new Uri(rootUri)); //This is synchronous, it will not go to the next line until the crawl has completed
+			CrawlResult result = await crawler.CrawlAsync(new Uri("http://a.co")); //This is synchronous, it will not go to the next line until the crawl has completed
 			if (result.ErrorOccurred)
 			{
 				Console.WriteLine("Crawl of {0} ({1} pages) completed with error: {2}", result.RootUri.AbsoluteUri, PageCount, result.ErrorException.Message);
@@ -231,7 +237,7 @@ namespace AzureSearchCrawler
 				MinCrawlDelayPerDomainMilliSeconds = 100,
 				IsSslCertificateValidationEnabled = true,
 				MaxPagesToCrawl = maxPages,
-				MaxCrawlDepth = 3,
+				MaxCrawlDepth = 0,
 				UserAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 			};

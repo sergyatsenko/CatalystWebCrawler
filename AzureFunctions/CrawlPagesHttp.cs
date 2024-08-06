@@ -60,7 +60,7 @@ namespace AzureSearchCrawler
 			var indexName = "catalyst-az-poc";
 			var key = "yrQnhlo42h8Nq5tK7alHcucdUskKb2FDtnx32ssLlsAzSeBOWnoA";
 			var maxPagesToIndex = 500;
-			var rootUrl = "https://www.catalyst.org";
+			var rootUrl = ""; // "https://www.catalyst.org";
 			
 
 			var indexer = new AzureSearchIndexer(serviceEndpoint, indexName, key, true, new TextExtractor());

@@ -128,15 +128,15 @@ namespace AzureSearchCrawler
 			webPage.LanguageName = "English"; // detectedLanguage.Value.Name;
 
 			// Analyze sentiment
-			webPage.SentimentValue = ""; // sentimentAnalysis.Value.Sentiment.ToString();
+			//webPage.SentimentValue = ""; // sentimentAnalysis.Value.Sentiment.ToString();
 
-			// Recognize entities
-			webPage.EntitiesList = [""]; // entities.Value.Select(p => p.Text).Distinct().ToList();
-			webPage.EntitiesJson = JsonSerializer.Serialize(new List<object>());//JsonSerializer.Serialize(entities.Value);
+			//// Recognize entities
+			//webPage.EntitiesList = [""]; // entities.Value.Select(p => p.Text).Distinct().ToList();
+			//webPage.EntitiesJson = JsonSerializer.Serialize(new List<object>());//JsonSerializer.Serialize(entities.Value);
 
-			// Recognize linked entities
-			webPage.LinkedEntitiesList = [""]; ; // linkedEntities.Value.Select(p => p.Name).Distinct().ToList();
-			webPage.LinkedEntitiesJson = JsonSerializer.Serialize(new List<object>());//JsonSerializer.Serialize(linkedEntities.Value);
+			//// Recognize linked entities
+			//webPage.LinkedEntitiesList = [""]; ; // linkedEntities.Value.Select(p => p.Name).Distinct().ToList();
+			//webPage.LinkedEntitiesJson = JsonSerializer.Serialize(new List<object>());//JsonSerializer.Serialize(linkedEntities.Value);
 		}
 
 		public async Task CrawlFinishedAsync()
