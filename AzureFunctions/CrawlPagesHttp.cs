@@ -56,16 +56,11 @@ namespace AzureSearchCrawler
 				? $"Received request with {urls.Count} URL(s): {string.Join(", ", urls)}"
 				: "Received request, but no valid URLs were provided.";
 
-			var serviceEndpoint = "https://xccomaisearch.search.windows.net";
-			var indexName = "catalyst-az-poc";
-			var key = "yrQnhlo42h8Nq5tK7alHcucdUskKb2FDtnx32ssLlsAzSeBOWnoA";
 			var maxPagesToIndex = 500;
-			var rootUrl = ""; // "https://www.catalyst.org";
-			
+			var rootUrl = ""; 
 
-			var indexer = new AzureSearchIndexer(serviceEndpoint, indexName, key, true, new TextExtractor());
-			var crawler = new Crawler(indexer);
-			crawler.Crawl(rootUrl, urls, maxPagesToIndex).Wait();
+			var crawler = Crawler.Instance;
+			crawler.Crawl(urls, maxPagesToIndex).Wait();
 
 
 			await response.WriteStringAsync(JsonSerializer.Serialize(new { message = responseMessage, urls = urls }));

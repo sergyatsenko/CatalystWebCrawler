@@ -113,6 +113,25 @@ namespace AzureSearchCrawler
 
 		private readonly CrawlHandler _handler;
 
+		private readonly static Crawler _instance;
+		private readonly AzureSearchIndexer _indexer;
+
+		//private Crawler(AzureSearchIndexer indexer)
+		//{
+		//	_indexer = indexer;
+		//}
+
+		public static Crawler Instance { get { return _instance; } }
+
+		static Crawler()
+		{
+			var serviceEndpoint = "https://xccomaisearch.search.windows.net";
+			var indexName = "catalyst-az-poc";
+			var key = "yrQnhlo42h8Nq5tK7alHcucdUskKb2FDtnx32ssLlsAzSeBOWnoA";
+			var indexer = new AzureSearchIndexer(serviceEndpoint, indexName, key, true, new TextExtractor());
+			_instance = new Crawler(indexer);
+		}
+
 		public Crawler(CrawlHandler handler)
 		{
 			_handler = handler;
@@ -145,7 +164,7 @@ namespace AzureSearchCrawler
 		}
 
 		//public async Task Crawl(string rootUri, int maxPages, int maxDepth)
-		public async Task Crawl(string rootUri, List<string> urls, int maxPages)
+		public async Task Crawl(List<string> urls, int maxPages)
 		{
 			
 			var sitemapScheduler = new SitemapScheduler();
@@ -157,27 +176,6 @@ namespace AzureSearchCrawler
 				}
 			}
 
-			//if (!string.IsNullOrEmpty(rootUri) && rootUri.ToLower().EndsWith("sitemap.xml"))
-			//{
-			//	Console.WriteLine("downloading sitemap...");
-			//	var sitemapScheduler = new SitemapScheduler();
-
-			//	List<string> urls = await DownloadAndParseSitemap(rootUri);
-
-			//	foreach (var url in urls)
-			//	{
-			//		if (!string.IsNullOrEmpty(url))
-			//		{
-			//			sitemapScheduler.Add(new PageToCrawl(new Uri(url)));
-			//		}
-			//	}
-			//	crawler = new(CreateCrawlConfiguration(maxPages, maxDepth), null, null, sitemapScheduler, null, null, null, null, null);
-
-			//}
-			//else
-			//{
-			//	crawler = new(CreateCrawlConfiguration(maxPages, maxDepth), null, null, null, null, null, null, null, null);
-			//}
 			PoliteWebCrawler crawler = new(CreateCrawlConfiguration(maxPages), null, null, sitemapScheduler, null, null, null, null, null);
 
 			crawler.PageCrawlStarting += crawler_ProcessPageCrawlStarting;
