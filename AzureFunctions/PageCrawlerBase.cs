@@ -2,98 +2,105 @@
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
 using HtmlAgilityPack;
-using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
-
 
 public class PageCrawlerBase
 {
-	private readonly HttpClient _httpClient;
-	internal readonly ILogger _logger;
+	internal readonly HttpClient _httpClient;
+	internal readonly ILogger<PageCrawlerBase> _logger;
 	private readonly int _maxConcurrency;
 	private readonly int _maxRetries;
-	private readonly SearchClient _searchClient;
+	internal readonly SearchClient _searchClient;
 
 	public PageCrawlerBase(IConfiguration configuration, ILoggerFactory loggerFactory)
 	{
-		_logger = loggerFactory.CreateLogger<PageCrawlerHttp>();
-
-		// Initialize HttpClient with User-Agent from configuration
+		_logger = loggerFactory.CreateLogger<PageCrawlerBase>();
 		_httpClient = new HttpClient();
+
 		string userAgent = configuration["UserAgent"] ?? "DefaultCrawlerBot/1.0";
 		_httpClient.DefaultRequestHeaders.Add("User-Agent", userAgent);
 
-		// Initialize Azure Search Client
-		string searchServiceEndpoint = configuration["SearchServiceEndpoint"];
-		string searchIndexName = configuration["SearchIndexName"];
-		string searchApiKey = configuration["SearchApiKey"];
+		string searchServiceEndpoint = configuration["SearchServiceEndpoint"] ?? throw new ArgumentNullException(nameof(configuration), "SearchServiceEndpoint is missing");
+		string searchIndexName = configuration["SearchIndexName"] ?? throw new ArgumentNullException(nameof(configuration), "SearchIndexName is missing");
+		string searchApiKey = configuration["SearchApiKey"] ?? throw new ArgumentNullException(nameof(configuration), "SearchApiKey is missing");
 
 		_searchClient = new SearchClient(
 			new Uri(searchServiceEndpoint),
 			searchIndexName,
 			new AzureKeyCredential(searchApiKey));
 
-		// Get configuration for concurrency and retries
 		_maxConcurrency = int.Parse(configuration["CrawlerMaxConcurrency"] ?? "3");
 		_maxRetries = int.Parse(configuration["CrawlerMaxRetries"] ?? "3");
 
-		_logger.LogInformation($"Page Crawler initialized with User-Agent: {userAgent}, MaxConcurrency: {_maxConcurrency}, MaxRetries: {_maxRetries}");
-
+		_logger.LogInformation("Page Crawler initialized with User-Agent: {UserAgent}, MaxConcurrency: {MaxConcurrency}, MaxRetries: {MaxRetries}",
+			userAgent, _maxConcurrency, _maxRetries);
 	}
 
-	internal async Task<PageInfo> CrawlPageAsync(string url, string source)
+	public async Task<PageInfo> CrawlPageAsync(string url, string source)
 	{
-		_logger.LogInformation($"Crawling {url} from source {source}");
+		_logger.LogInformation("Crawling {Url} from source {Source}", url, source);
 
-		var response = await _httpClient.GetAsync(url);
-		response.EnsureSuccessStatusCode();
-
-		var html = await response.Content.ReadAsStringAsync();
-		var doc = new HtmlDocument();
-		doc.LoadHtml(html);
-
-		var mainElement = doc.DocumentNode.SelectSingleNode("//main");
-		string mainContentHtml = mainElement?.InnerHtml ?? string.Empty;
-		string mainContentText = mainElement?.InnerText ?? string.Empty;
-
-		var pageInfo = new PageInfo
+		try
 		{
-			Url = url,
-			Title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim(),
-			MetaTags = JsonSerializer.Serialize(ExtractMetaTags(doc)),
-			HtmlContent = html,
-			MainContentHtml = mainContentHtml,
-			MainContentText = mainContentText.Trim(),
-			Source = source
-		};
+			var response = await _httpClient.GetAsync(url);
+			response.EnsureSuccessStatusCode();
 
-		return pageInfo;
+			var html = await response.Content.ReadAsStringAsync();
+			var doc = new HtmlDocument();
+			doc.LoadHtml(html);
+
+			var mainElement = doc.DocumentNode.SelectSingleNode("//main");
+			string mainContentHtml = mainElement?.InnerHtml ?? string.Empty;
+			string mainContentText = mainElement?.InnerText?.Trim() ?? string.Empty;
+
+			var pageInfo = new PageInfo
+			{
+				Url = url,
+				Title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim(),
+				MetaTags = JsonSerializer.Serialize(ExtractMetaTags(doc)),
+				HtmlContent = html,
+				MainContentHtml = mainContentHtml,
+				MainContentText = mainContentText,
+				Source = source
+			};
+
+			return pageInfo;
+		}
+		catch (HttpRequestException ex)
+		{
+			_logger.LogError(ex, "HTTP request error while crawling {Url}", url);
+			throw;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Unexpected error while crawling {Url}", url);
+			throw;
+		}
 	}
 
-	internal async Task<HttpResponseData> CrawlPages(HttpRequestData req, CrawlRequest? crawlRequest)
+	public async Task CrawlPages(CrawlRequest crawlRequest)
 	{
+		if (crawlRequest == null || crawlRequest.Urls == null || !crawlRequest.Urls.Any())
+		{
+			_logger.LogWarning("Invalid crawl request received");
+			return;
+		}
+
 		var results = new ConcurrentBag<PageInfo>();
 
-		var parallelOptions = new ParallelOptions
-		{
-			MaxDegreeOfParallelism = _maxConcurrency
-		};
+		await Parallel.ForEachAsync(crawlRequest.Urls, new ParallelOptions { MaxDegreeOfParallelism = _maxConcurrency },
+			async (url, ct) =>
+			{
+				var pageInfo = await ProcessUrlWithRetryAsync(url, crawlRequest.Source);
+				results.Add(pageInfo);
+			});
 
-		await Parallel.ForEachAsync(crawlRequest.urls, parallelOptions, async (url, ct) =>
-		{
-			var pageInfo = await ProcessUrlWithRetryAsync(url, crawlRequest.source);
-			results.Add(pageInfo);
-		});
-
-		var response = req.CreateResponse(HttpStatusCode.OK);
-		await response.WriteAsJsonAsync(results);
-		return response;
+		_logger.LogInformation("Crawled {Count} pages from source {Source}", results.Count, crawlRequest.Source);
 	}
 
 	private Dictionary<string, string> ExtractMetaTags(HtmlDocument doc)
@@ -119,20 +126,18 @@ public class PageCrawlerBase
 		return metaTags;
 	}
 
-	private string GenerateShortUniqueId(string url)
+	private static string GenerateUrlUniqueId(string url)
 	{
-		using (var sha256 = SHA256.Create())
-		{
-			byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(url));
-			return Convert.ToBase64String(hashBytes)
-				.Replace("/", "_")
-				.Replace("+", "-");
-		}
+		using var sha256 = SHA256.Create();
+		byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(url));
+		return Convert.ToBase64String(hashBytes)
+			.Replace("/", "_")
+			.Replace("+", "-");
 	}
 
 	private async Task IndexPageInfoAsync(PageInfo pageInfo)
 	{
-		string uniqueId = GenerateShortUniqueId(pageInfo.Url);
+		string uniqueId = GenerateUrlUniqueId(pageInfo.Url);
 
 		var document = new SearchDocument
 		{
@@ -149,11 +154,12 @@ public class PageCrawlerBase
 		try
 		{
 			await _searchClient.MergeOrUploadDocumentsAsync(new[] { document });
-			_logger.LogInformation($"Indexed document for {pageInfo.Url} with ID: {uniqueId} from source: {pageInfo.Source}");
+			_logger.LogInformation("Indexed document for {Url} with ID: {UniqueId} from source: {Source}",
+				pageInfo.Url, uniqueId, pageInfo.Source);
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError($"Error indexing document for {pageInfo.Url}: {ex.Message}");
+			_logger.LogError(ex, "Error indexing document for {Url}", pageInfo.Url);
 			throw;
 		}
 	}
@@ -170,25 +176,24 @@ public class PageCrawlerBase
 			}
 			catch (Exception ex)
 			{
-				_logger.LogWarning($"Error processing {url} (Attempt {attempt}/{_maxRetries}): {ex.Message}");
+				_logger.LogWarning(ex, "Error processing {Url} (Attempt {Attempt}/{MaxRetries})", url, attempt, _maxRetries);
 				if (attempt == _maxRetries)
 				{
-					_logger.LogError($"Failed to process {url} after {_maxRetries} attempts");
+					_logger.LogError(ex, "Failed to process {Url} after {MaxRetries} attempts", url, _maxRetries);
 					return new PageInfo { Url = url, Error = ex.Message, Source = source };
 				}
 				await Task.Delay(1000 * attempt); // Exponential backoff
 			}
 		}
 
-		// This line should never be reached due to the return in the catch block, but it's here to satisfy the compiler
 		return new PageInfo { Url = url, Error = "Unexpected error", Source = source };
 	}
 }
 
 public class CrawlRequest
 {
-	public string[] urls { get; set; }
-	public string source { get; set; }
+	public List<string> Urls { get; set; }
+	public string Source { get; set; }
 }
 
 public class PageInfo

@@ -1,49 +1,70 @@
-﻿using Azure;
-using Azure.Search.Documents;
-using Azure.Search.Documents.Models;
-using HtmlAgilityPack;
+﻿using System;
+using System.IO;
+using System.Net;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Net;
-
-using System.Text.Json;
-
 
 public class PageCrawlerHttp : PageCrawlerBase
 {
-	public PageCrawlerHttp(IConfiguration configuration, ILoggerFactory loggerFactory): base(configuration, loggerFactory)
+	public PageCrawlerHttp(IConfiguration configuration, ILoggerFactory loggerFactory)
+		: base(configuration, loggerFactory)
 	{
-
+		
 	}
 
 	[Function("PageCrawlerHttp")]
 	public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
 	{
-		_logger.LogInformation("C# HTTP trigger function processed a request.");
+		_logger.LogInformation("C# HTTP trigger function processing a request.");
 
-		string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-		var crawlRequest = JsonSerializer.Deserialize<CrawlRequest>(requestBody);
-
-		if (crawlRequest?.urls == null || crawlRequest.urls.Length == 0)
+		CrawlRequest crawlRequest;
+		try
 		{
-			var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
-			await badResponse.WriteStringAsync("Please provide an array of URLs in the request body.");
-			return badResponse;
+			string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+			crawlRequest = JsonSerializer.Deserialize<CrawlRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+		}
+		catch (JsonException ex)
+		{
+			_logger.LogError(ex, "Error deserializing request body");
+			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Invalid JSON in request body.");
 		}
 
-		if (crawlRequest?.source == null || crawlRequest.source.Length == 0)
+		if (crawlRequest?.Urls == null || crawlRequest.Urls.Count == 0)
 		{
-			var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
-			await badResponse.WriteStringAsync("Please provide an array of URLs in the request body.");
-			return badResponse;
+			_logger.LogWarning("Request received with no URLs");
+			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Please provide an array of URLs in the request body.");
 		}
 
-		return await CrawlPages(req, crawlRequest);
+		if (string.IsNullOrWhiteSpace(crawlRequest.Source))
+		{
+			_logger.LogWarning("Request received with no source");
+			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Please provide a source in the request body.");
+		}
+
+		try
+		{
+			await CrawlPages(crawlRequest);
+			_logger.LogInformation("Successfully crawled {UrlCount} pages from source {Source}", crawlRequest.Urls.Count, crawlRequest.Source);
+
+			var response = req.CreateResponse(HttpStatusCode.OK);
+			await response.WriteStringAsync($"Successfully processed {crawlRequest.Urls.Count} URLs.");
+			return response;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error occurred while crawling pages");
+			return await CreateErrorResponse(req, HttpStatusCode.InternalServerError, "An error occurred while processing the request.");
+		}
+	}
+
+	private async Task<HttpResponseData> CreateErrorResponse(HttpRequestData req, HttpStatusCode statusCode, string message)
+	{
+		var response = req.CreateResponse(statusCode);
+		await response.WriteStringAsync(message);
+		return response;
 	}
 }
-

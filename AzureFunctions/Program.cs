@@ -15,7 +15,7 @@ var host = new HostBuilder()
 				.ConfigureServices((context, services) =>
 				{
 					services.AddHttpClient();
-					services.AddSingleton<CrawlPagesServiceBus>();
+					//services.AddSingleton<PageCrawlerQueue>();
 					//services.AddSingleton<IConfiguration>(context.Configuration);
 
 					// Add any other services your application needs here
