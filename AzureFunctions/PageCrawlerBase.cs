@@ -1,6 +1,7 @@
 ﻿using Azure;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
+using AzureSearchCrawler;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ public class PageCrawlerBase
 	private readonly int _maxConcurrency;
 	private readonly int _maxRetries;
 	internal readonly SearchClient _searchClient;
+	private readonly TextExtractor _textExtractor = new TextExtractor();
 
 	public PageCrawlerBase(IConfiguration configuration, ILoggerFactory loggerFactory)
 	{
@@ -48,24 +50,27 @@ public class PageCrawlerBase
 		try
 		{
 			var response = await _httpClient.GetAsync(url);
+
 			response.EnsureSuccessStatusCode();
 
 			var html = await response.Content.ReadAsStringAsync();
 			var doc = new HtmlDocument();
 			doc.LoadHtml(html);
 
-			var mainElement = doc.DocumentNode.SelectSingleNode("//main");
-			string mainContentHtml = mainElement?.InnerHtml ?? string.Empty;
-			string mainContentText = mainElement?.InnerText?.Trim() ?? string.Empty;
+			//var mainElement = doc.DocumentNode.SelectSingleNode("//main");
+			//string mainContentHtml = mainElement?.InnerHtml ?? string.Empty;
+			//string mainContentText = mainElement?.InnerText?.Trim() ?? string.Empty;
+
+			var pageContent = _textExtractor.ExtractPageContent(doc);
 
 			var pageInfo = new PageInfo
 			{
 				Url = url,
-				Title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim(),
+				Title = pageContent.Title,
 				MetaTags = JsonSerializer.Serialize(ExtractMetaTags(doc)),
-				HtmlContent = html,
-				MainContentHtml = mainContentHtml,
-				MainContentText = mainContentText,
+				HtmlContent = pageContent.HtmlContent,
+				TextContent = pageContent.TextContent,
+
 				Source = source
 			};
 
@@ -85,7 +90,7 @@ public class PageCrawlerBase
 
 	public async Task CrawlPages(CrawlRequest crawlRequest)
 	{
-		if (crawlRequest == null || crawlRequest.Urls == null || !crawlRequest.Urls.Any())
+		if (crawlRequest == null || crawlRequest.urls == null || !crawlRequest.urls.Any())
 		{
 			_logger.LogWarning("Invalid crawl request received");
 			return;
@@ -93,14 +98,15 @@ public class PageCrawlerBase
 
 		var results = new ConcurrentBag<PageInfo>();
 
-		await Parallel.ForEachAsync(crawlRequest.Urls, new ParallelOptions { MaxDegreeOfParallelism = _maxConcurrency },
+		await Parallel.ForEachAsync(crawlRequest.urls, new ParallelOptions { MaxDegreeOfParallelism = _maxConcurrency },
 			async (url, ct) =>
 			{
-				var pageInfo = await ProcessUrlWithRetryAsync(url, crawlRequest.Source);
+				var pageInfo = await ProcessUrlWithRetryAsync(url, crawlRequest.source);
+				await Task.Delay(100); // Slow down to prevent rate limiting
 				results.Add(pageInfo);
 			});
 
-		_logger.LogInformation("Crawled {Count} pages from source {Source}", results.Count, crawlRequest.Source);
+		_logger.LogInformation("Crawled {Count} pages from source {Source}", results.Count, crawlRequest.source);
 	}
 
 	private Dictionary<string, string> ExtractMetaTags(HtmlDocument doc)
@@ -130,9 +136,13 @@ public class PageCrawlerBase
 	{
 		using var sha256 = SHA256.Create();
 		byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(url));
-		return Convert.ToBase64String(hashBytes)
-			.Replace("/", "_")
-			.Replace("+", "-");
+		var key = Convert.ToBase64String(hashBytes)
+			.Replace("_", "-") // Remove the padding
+			.Replace("/", "-")
+			.Replace("+", "-")
+			.TrimEnd('=');  // Remove any trailing '='
+
+		return key;
 	}
 
 	private async Task IndexPageInfoAsync(PageInfo pageInfo)
@@ -146,8 +156,7 @@ public class PageCrawlerBase
 			["title"] = pageInfo.Title,
 			["metaTags"] = pageInfo.MetaTags,
 			["htmlContent"] = pageInfo.HtmlContent,
-			["mainContentHtml"] = pageInfo.MainContentHtml,
-			["mainContentText"] = pageInfo.MainContentText,
+			["textContent"] = pageInfo.TextContent,
 			["source"] = pageInfo.Source
 		};
 
@@ -192,8 +201,8 @@ public class PageCrawlerBase
 
 public class CrawlRequest
 {
-	public List<string> Urls { get; set; }
-	public string Source { get; set; }
+	public List<string> urls { get; set; }
+	public string source { get; set; }
 }
 
 public class PageInfo
@@ -201,9 +210,9 @@ public class PageInfo
 	public string Url { get; set; }
 	public string Title { get; set; }
 	public string MetaTags { get; set; }
+	//public string HtmlContent { get; set; }
 	public string HtmlContent { get; set; }
-	public string MainContentHtml { get; set; }
-	public string MainContentText { get; set; }
+	public string TextContent { get; set; }
 	public string Source { get; set; }
 	public string Error { get; set; }
 }

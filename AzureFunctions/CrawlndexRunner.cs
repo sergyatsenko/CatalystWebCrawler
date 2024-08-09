@@ -1,13 +1,8 @@
 ﻿using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace AzureSearchCrawler
@@ -23,14 +18,14 @@ namespace AzureSearchCrawler
 		private readonly ServiceBusSender _sender;
 		private readonly string _sitemapsRootUrl;
 
-		public CrawlIndexRunner(ILoggerFactory loggerFactory, IConfiguration configuration, HttpClient httpClient)
+		public CrawlIndexRunner(ILoggerFactory loggerFactory, IConfiguration configuration)
 		{
 			_logger = loggerFactory.CreateLogger<CrawlIndexRunner>();
 			_serviceBusConnectionString = configuration["ServiceBusConnection"] ?? throw new ArgumentNullException(nameof(_serviceBusConnectionString), "ServiceBusConnection configuration is missing");
 			_queueName = configuration["ServiceBusQueueName"] ?? throw new ArgumentNullException(nameof(_queueName), "ServiceBusQueueName configuration is missing");
 			_schedule = configuration["CrawlIndexSchedule"] ?? throw new ArgumentNullException(nameof(_schedule), "CrawlIndexSchedule configuration is missing");
 			_sitemapsRootUrl = configuration["SitemapsRootUrl"] ?? throw new ArgumentNullException(nameof(_schedule), "SitemapsRootUrl configuration is missing");
-			_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+			_httpClient = new HttpClient();
 
 			_serviceBusClient = new ServiceBusClient(_serviceBusConnectionString);
 			_sender = _serviceBusClient.CreateSender(_queueName);

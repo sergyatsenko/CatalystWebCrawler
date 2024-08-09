@@ -33,13 +33,13 @@ public class PageCrawlerHttp : PageCrawlerBase
 			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Invalid JSON in request body.");
 		}
 
-		if (crawlRequest?.Urls == null || crawlRequest.Urls.Count == 0)
+		if (crawlRequest?.urls == null || crawlRequest.urls.Count == 0)
 		{
 			_logger.LogWarning("Request received with no URLs");
 			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Please provide an array of URLs in the request body.");
 		}
 
-		if (string.IsNullOrWhiteSpace(crawlRequest.Source))
+		if (string.IsNullOrWhiteSpace(crawlRequest.source))
 		{
 			_logger.LogWarning("Request received with no source");
 			return await CreateErrorResponse(req, HttpStatusCode.BadRequest, "Please provide a source in the request body.");
@@ -48,10 +48,10 @@ public class PageCrawlerHttp : PageCrawlerBase
 		try
 		{
 			await CrawlPages(crawlRequest);
-			_logger.LogInformation("Successfully crawled {UrlCount} pages from source {Source}", crawlRequest.Urls.Count, crawlRequest.Source);
+			_logger.LogInformation("Successfully crawled {UrlCount} pages from source {Source}", crawlRequest.urls.Count, crawlRequest.source);
 
 			var response = req.CreateResponse(HttpStatusCode.OK);
-			await response.WriteStringAsync($"Successfully processed {crawlRequest.Urls.Count} URLs.");
+			await response.WriteStringAsync($"Successfully processed {crawlRequest.urls.Count} URLs.");
 			return response;
 		}
 		catch (Exception ex)

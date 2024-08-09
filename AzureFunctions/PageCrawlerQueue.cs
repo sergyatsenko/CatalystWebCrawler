@@ -37,7 +37,7 @@ public class PageCrawlerQueue : PageCrawlerBase
 			if (triggerMessage?.Body != null)
 			{
 				await ProcessMessage(triggerMessage, receiver);
-				await triggerMessageActions.CompleteMessageAsync(triggerMessage);
+				//await triggerMessageActions.CompleteMessageAsync(triggerMessage);
 			}
 			else
 			{
@@ -76,7 +76,10 @@ public class PageCrawlerQueue : PageCrawlerBase
 		try
 		{
 			var jsonDocument = JsonDocument.Parse(message.Body.ToString());
-			var crawlRequest = JsonSerializer.Deserialize<CrawlRequest>(jsonDocument);
+			//var crawlRequest = JsonSerializer.Deserialize<CrawlRequest>(jsonDocument);
+			//var crawlRequest = jsonDocument.RootElement.Deserialize<CrawlRequest>();
+			var crawlRequest = JsonSerializer.Deserialize<CrawlRequest>(jsonDocument, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
 			await CrawlPages(crawlRequest);
 			_logger.LogInformation("Message {MessageId} processed and removed from the queue", message.MessageId);
 			await receiver.CompleteMessageAsync(message);
