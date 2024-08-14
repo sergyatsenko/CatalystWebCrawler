@@ -20,7 +20,7 @@ Set source to source sitemap url and urls to the list of urls to index when inde
         "https://www.catalyst.org/2021/04/27/future-of-work-summit-europe-2021-takeaways/"
     ]
 }
-``
+```
 
 
 ## Configuration items template
