@@ -24,7 +24,7 @@ Set source to source sitemap url and urls to the list of urls to index when inde
 
 
 ## Configuration items template
-These values need to be set in the Azure Function configuration (environment variables) to run the function in Azure or local.settings.json to run locally. 
+These values need to be set in the Azure Function configuration (environment variables) to run functions in Azure or local.settings.json to run locally. 
 
 ```json
 {
